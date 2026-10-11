@@ -1,0 +1,9 @@
+# Credentials & Secrets
+.env
+config.local.json
+secrets.json
+
+# System & OS
+.DS_Store
+Thumbs.db
+*.log
