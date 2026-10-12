@@ -13,8 +13,25 @@
    - `🎮 免費遊戲`：即時抓取 Steam 最新限免遊戲領取連結。
    - `🔮 運勢`：今日運勢靈籤與幸運色。
    - `ℹ️ /help`：列出完整的實用指令清單。
-2. **AI 智慧大腦**
-   - 其餘所有一般對話，均無縫交給 **Google Gemini AI (`gemini-1.5-flash`)** 進行自然語言解答。
+2. **AI 智慧大腦 (雙引擎支援)**
+   - **本地端模型 (Local LLM)**：支援 **Ollama (`qwen2`)**，搭配即時 **DuckDuckGo 聯網搜尋 (RAG)**，直接獲取即時網路資訊！
+   - **雲端模型 (Cloud LLM)**：無縫切換 **Google Gemini AI (`gemini-1.5-flash`)** 進行極速解答。
+
+---
+
+## ⚡ 本地 Ollama (Qwen2) + Ngrok 一鍵啟動
+
+本專案提供自動化部署腳本 [`start_ollama_ngrok.ps1`](start_ollama_ngrok.ps1)，執行後會自動完成：
+1. 自動設定 `OLLAMA_ORIGINS="*"` 與 `OLLAMA_HOST="0.0.0.0:11434"`，徹底避免外部呼叫時發生 **403 Forbidden** 錯誤。
+2. 檢查並自動下載/安裝 Ollama（若尚未安裝）。
+3. 自動啟動 Ollama 服務並下載 `qwen2` 模型。
+4. 檢查 Ngrok、提示輸入 Authtoken 登入，並開啟公開隧道 (`ngrok http 11434`)。
+
+**執行方式 (Windows PowerShell)：**
+```powershell
+.\start_ollama_ngrok.ps1
+```
+啟動後將 Ngrok 提供的公開 HTTPS 網址複製至 `Code.gs` 的 `CONFIG.OLLAMA_URL` 即可！
 
 ---
 

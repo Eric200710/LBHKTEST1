@@ -13,7 +13,19 @@ const CONFIG = {
   // LINE Channel Access Token (請至 LINE Developers 後台取得)
   LINE_ACCESS_TOKEN: 'YOUR_LINE_ACCESS_TOKEN',
 
-  // Google Gemini API Key (請至 Google AI Studio 取得)
+  // AI 核心模式選擇: 'ollama' (本地模型) 或 'gemini' (Google 雲端模型)
+  AI_ENGINE: 'ollama',
+
+  // 本地 Ollama Ngrok 公開轉發 API 端點 (例如 https://xxxx.ngrok-free.dev/api/generate)
+  OLLAMA_URL: 'https://elsewhere-frosted-jalapeno.ngrok-free.dev/api/generate',
+
+  // 本地 Ollama 模型名稱 (例如 qwen2, qwen2:7b)
+  OLLAMA_MODEL: 'qwen2',
+
+  // 是否自動啟動即時聯網搜尋加強 (DuckDuckGo 聯網搜尋)
+  ENABLE_WEB_SEARCH: true,
+
+  // Google Gemini API Key (若 AI_ENGINE 選擇 gemini 時使用)
   GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY',
 
   // Gemini 官方推薦極速模型
@@ -55,8 +67,12 @@ function doPost(e) {
         } else if (userPrompt === '運勢' || userPrompt === '今日運勢') {
           replyMessageText = getFortuneText();
         } else {
-          // 其餘對話交給 Gemini AI
-          replyMessageText = callGemini(userPrompt);
+          // 其餘對話交給 AI 處理 (依 CONFIG.AI_ENGINE 決定呼叫 Ollama 還是 Gemini)
+          if (CONFIG.AI_ENGINE === 'ollama') {
+            replyMessageText = callOllamaWithSearch(userPrompt);
+          } else {
+            replyMessageText = callGemini(userPrompt);
+          }
         }
 
         // 即時免費回覆給使用者
@@ -282,6 +298,91 @@ function callGemini(prompt) {
   }
 
   return "【Gemini 目前連線繁忙，請稍候片刻再試】";
+}
+
+// ==========================================
+// 5. 本地 Ollama 串接與 DuckDuckGo 即時搜尋
+// ==========================================
+function callOllamaWithSearch(userPrompt) {
+  try {
+    let searchContext = "";
+    if (CONFIG.ENABLE_WEB_SEARCH) {
+      searchContext = searchWeb(userPrompt);
+    }
+
+    let finalPrompt = "";
+    if (searchContext && searchContext.trim() !== "") {
+      finalPrompt = `你是一個具備最新資訊搜尋能力的繁體中文 AI 助理。請閱讀以下即時搜尋到的摘要資料，並結合你的知識回答使用者的問題。\n\n` +
+        `[最新網路搜尋結果]:\n${searchContext}\n\n` +
+        `[使用者問題]:\n${userPrompt}\n\n` +
+        `請用繁體中文流暢且精準地回覆：`;
+    } else {
+      finalPrompt = `你是一個 AI 助理，請使用繁體中文回答以下問題：\n${userPrompt}`;
+    }
+
+    return queryOllama(finalPrompt);
+  } catch (err) {
+    return `【Ollama 連線錯誤】\n${err.message}\n\n提示：請確認電腦中已執行 start_ollama_ngrok.ps1 並更新 OLLAMA_URL。`;
+  }
+}
+
+function searchWeb(query) {
+  try {
+    const url = "https://lite.duckduckgo.com/lite/";
+    const options = {
+      method: "post",
+      payload: { q: query },
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(url, options);
+    const html = response.getContentText();
+
+    const snippets = [];
+    const regex = /<td class="result-snippet">([\s\S]*?)<\/td>/g;
+    let match;
+    let count = 0;
+    while ((match = regex.exec(html)) !== null && count < 3) {
+      let text = match[1].replace(/<[^>]+>/g, "").trim();
+      if (text) {
+        snippets.push(`- ${text}`);
+        count++;
+      }
+    }
+
+    return snippets.join("\n");
+  } catch (e) {
+    return "";
+  }
+}
+
+function queryOllama(prompt) {
+  const payload = {
+    model: CONFIG.OLLAMA_MODEL || "qwen2",
+    prompt: prompt,
+    stream: false
+  };
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      "ngrok-skip-browser-warning": "true",
+      "User-Agent": "LINEBot-GAS"
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  const res = UrlFetchApp.fetch(CONFIG.OLLAMA_URL, options);
+  const statusCode = res.getResponseCode();
+
+  if (statusCode !== 200) {
+    throw new Error(`狀態碼 ${statusCode}: ${res.getContentText()}`);
+  }
+
+  const data = JSON.parse(res.getContentText());
+  return data.response ? data.response.trim() : "（未取得回覆內容）";
 }
 
 // ==========================================
