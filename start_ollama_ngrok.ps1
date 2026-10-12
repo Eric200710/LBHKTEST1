@@ -40,8 +40,13 @@ if (-not $ollamaCmd) {
     $installerPath = "$env:TEMP\OllamaSetup.exe"
     Write-Host "  -> 下載 Ollama 安裝程式至 $installerPath ..." -ForegroundColor Gray
     Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $installerPath
-    Write-Host "  -> 正在執行安裝程式，請稍候..." -ForegroundColor Gray
-    Start-Process -FilePath $installerPath -Wait
+    Write-Host "  -> 已啟動 Ollama 安裝精靈，請在彈出的視窗手動點擊「Install」完成安裝..." -ForegroundColor Cyan
+    Start-Process -FilePath $installerPath
+    
+    # 等待使用者手動點擊 Install 並完成安裝
+    Write-Host ""
+    Write-Host ">>> 請在 Ollama 安裝完成後，回到此視窗按下 [Enter] 繼續..." -ForegroundColor Yellow
+    Read-Host
     
     # 重新整理 PATH
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -78,6 +83,14 @@ if (-not $ngrokCmd) {
         winget install Ngrok.Ngrok
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
     }
+}
+
+# 執行 ngrok update 檢查版本
+Write-Host "  -> 檢查 Ngrok 版本與更新狀態..." -ForegroundColor Cyan
+try {
+    ngrok update
+} catch {
+    Write-Host "  -> 無法執行 ngrok update，請確認 ngrok 是否已正確配置。" -ForegroundColor Yellow
 }
 
 # 提示登入 Token (如果尚未配置)
