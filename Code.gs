@@ -33,8 +33,8 @@ const CONFIG = {
   // Google Gemini API Key (當 AI_ENGINE 為 gemini 或 Ollama 連線失敗備援時使用)
   GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY',
 
-  // Gemini 推薦模型
-  GEMINI_MODEL: 'gemini-1.5-flash'
+  // Gemini 推薦模型 (最新模型為 gemini-3.8-flash)
+  GEMINI_MODEL: 'gemini-3.8-flash'
 };
 
 // ==========================================
@@ -288,12 +288,12 @@ function callOllamaWithContext(userPrompt, searchContext) {
 }
 
 // ==========================================
-// 6. 呼叫 Google Gemini API (支援搜尋上下文注入)
+// 6. 呼叫 Google Gemini API (支援搜尋上下文注入與多模型/錯誤診斷)
 // ==========================================
 function callGeminiWithContext(userPrompt, searchContext) {
   var apiKey = CONFIG.GEMINI_API_KEY ? CONFIG.GEMINI_API_KEY.trim() : "";
   if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY") {
-    throw new Error("尚未設定 GEMINI_API_KEY");
+    throw new Error("尚未設定 GEMINI_API_KEY，請至 CONFIG 填入有效的 Gemini API 金鑰。");
   }
 
   var promptText = "";
@@ -306,7 +306,16 @@ function callGeminiWithContext(userPrompt, searchContext) {
     promptText = "你是 LINE 上的智慧助理。請以台灣繁體中文純文字回答以下問題：\n" + userPrompt;
   }
 
-  var models = [CONFIG.GEMINI_MODEL, 'gemini-1.5-flash', 'gemini-2.0-flash'];
+  // 嘗試模型清單 (Google 最新官方推薦模型)
+  var models = [CONFIG.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-3.8-pro', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  // 去除重複
+  var uniqueModels = [];
+  for (var i = 0; i < models.length; i++) {
+    if (models[i] && uniqueModels.indexOf(models[i]) === -1) {
+      uniqueModels.push(models[i]);
+    }
+  }
+
   var payload = {
     contents: [{ parts: [{ text: promptText }] }]
   };
@@ -314,29 +323,49 @@ function callGeminiWithContext(userPrompt, searchContext) {
   var options = {
     method: 'post',
     contentType: 'application/json',
+    headers: {
+      'x-goog-api-key': apiKey
+    },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
 
-  for (var m = 0; m < models.length; m++) {
-    var modelName = models[m];
-    var url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+  var lastErrors = [];
+
+  for (var m = 0; m < uniqueModels.length; m++) {
+    var modelName = uniqueModels[m];
+    // 同時在 URL 與 Header 帶入，確保相容性
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + encodeURIComponent(apiKey);
 
     try {
       var response = UrlFetchApp.fetch(url, options);
       var statusCode = response.getResponseCode();
+      var respText = response.getContentText();
+
       if (statusCode === 200) {
-        var result = JSON.parse(response.getContentText());
+        var result = JSON.parse(respText);
         if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts.length > 0) {
           return result.candidates[0].content.parts[0].text.trim();
         }
+      } else {
+        var errMsg = "模型 " + modelName + " (HTTP " + statusCode + "): ";
+        try {
+          var errJson = JSON.parse(respText);
+          errMsg += (errJson.error && errJson.error.message) ? errJson.error.message : respText.substring(0, 150);
+        } catch (je) {
+          errMsg += respText.substring(0, 150);
+        }
+        console.warn(errMsg);
+        lastErrors.push(errMsg);
       }
     } catch (err) {
-      console.warn("Gemini 模型 " + modelName + " 請求失敗: " + err.toString());
+      var fetchErr = "模型 " + modelName + " 連線異常: " + err.toString();
+      console.warn(fetchErr);
+      lastErrors.push(fetchErr);
     }
   }
 
-  throw new Error("所有 Gemini 模型端點均未能成功取得回覆。");
+  throw new Error("所有 Gemini 模型端點失敗：\n" + lastErrors.join("\n"));
 }
 
 // ==========================================
@@ -552,4 +581,15 @@ function testWebSearch() {
 function testHandleSmartAnswer() {
   var ans = handleSmartAnswer("請告訴我花蓮名產是什麼？");
   Logger.log("回答結果:\n" + ans);
+}
+
+// 專門測試 Gemini API 連線與金鑰有效性
+function testGeminiDirect() {
+  try {
+    Logger.log("正在測試 Gemini API 連線...");
+    var ans = callGeminiWithContext("請用繁體中文說一句問候語", "");
+    Logger.log("✅ Gemini 測試成功！回覆內容：\n" + ans);
+  } catch (err) {
+    Logger.log("❌ Gemini 測試失敗！詳細原因：\n" + err.message);
+  }
 }
